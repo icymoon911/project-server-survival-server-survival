@@ -83,6 +83,7 @@ class CampaignController {
         STATE.campaign.completedByType = { STATIC: 0, READ: 0, WRITE: 0, UPLOAD: 0, SEARCH: 0 };
         STATE.campaign.completedByService = {};
         STATE.campaign.burstTimer = 0;
+        STATE.campaign.burstQueue = [];
         STATE.campaign.outageFired = false;
         this._tickCounter = 0;
         return true;
@@ -94,17 +95,29 @@ class CampaignController {
         if (!this.active || STATE.campaign.ended) return;
 
         // 1) Forced burst pattern (level config: burstPattern)
+        // Driven entirely by game-dt so it pauses with timeScale=0 and
+        // scales with timeScale=3. No real-time setTimeout.
         const bp = STATE.campaign.level?.burstPattern;
         if (bp?.enabled) {
+            // Drain pending burst queue first (staggered spawns from a prior trigger)
+            if (STATE.campaign.burstQueue.length > 0) {
+                for (let i = STATE.campaign.burstQueue.length - 1; i >= 0; i--) {
+                    STATE.campaign.burstQueue[i] -= dt;
+                    if (STATE.campaign.burstQueue[i] <= 0) {
+                        if (typeof spawnRequest === "function") spawnRequest();
+                        STATE.campaign.burstQueue.splice(i, 1);
+                    }
+                }
+            }
+
             STATE.campaign.burstTimer += dt;
             if (STATE.campaign.burstTimer >= bp.intervalSec) {
                 STATE.campaign.burstTimer = 0;
-                for (let i = 0; i < bp.burstSize; i++) {
-                    setTimeout(() => {
-                        // Bail if the level ended or campaign exited while this burst was in flight.
-                        if (!this.active || STATE.campaign.ended) return;
-                        if (typeof spawnRequest === "function") spawnRequest();
-                    }, i * 20);
+                // Spawn the first request immediately, queue the rest staggered
+                // at 20ms (0.02s) intervals measured in game-time.
+                if (typeof spawnRequest === "function") spawnRequest();
+                for (let i = 1; i < bp.burstSize; i++) {
+                    STATE.campaign.burstQueue.push(i * 0.02);
                 }
             }
         }

@@ -414,6 +414,7 @@ function triggerRandomEvent(
             if (services.length > 0) {
                 const target = services[Math.floor(Math.random() * services.length)];
                 target.isDisabled = true;
+                target.randomEventDisabled = true;
                 target.mesh.material.opacity = 0.3;
                 target.mesh.material.transparent = true;
                 addInterventionWarning(
@@ -453,8 +454,11 @@ function endRandomEvent() {
 
         case "SERVICE_OUTAGE":
             STATE.services.forEach((s) => {
-                if (s.isDisabled) {
+                // Only restore services that were disabled by this random event,
+                // not services disabled by campaign (forceOutageAtSec).
+                if (s.isDisabled && s.randomEventDisabled) {
                     s.isDisabled = false;
+                    s.randomEventDisabled = false;
                     s.mesh.material.opacity = 1.0;
                     s.mesh.material.transparent = false;
                 }
@@ -1477,7 +1481,6 @@ function updateScore(req, outcome) {
     if (outcome === "MALICIOUS_BLOCKED") {
         STATE.score.maliciousBlocked += points.MALICIOUS_BLOCKED_SCORE;
         STATE.score.total += points.MALICIOUS_BLOCKED_SCORE;
-        STATE.score.total += points.MALICIOUS_BLOCKED_SCORE;
 
         // Mitigation cost for blocking attacks
         const mitigationCost = CONFIG.survival.SCORE_POINTS.MALICIOUS_MITIGATION_COST || 1.0;
@@ -1490,7 +1493,6 @@ function updateScore(req, outcome) {
         req.type === TRAFFIC_TYPES.MALICIOUS &&
         outcome === "MALICIOUS_PASSED"
     ) {
-        STATE.reputation += points.MALICIOUS_PASSED_REPUTATION;
         STATE.reputation += points.MALICIOUS_PASSED_REPUTATION;
         STATE.failures.MALICIOUS++;
 
