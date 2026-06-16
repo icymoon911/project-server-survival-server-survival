@@ -290,6 +290,11 @@
             d="M8 7H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
         </svg>
       </button>
+      <button onclick="showBlueprintManager()" id="btn-blueprint"
+        class="time-btn w-10 h-10 rounded-lg border border-gray-600 text-gray-400 hover:text-white hover:border-teal-500 hover:text-teal-400 flex items-center justify-center"
+        title="Blueprints">
+        <span class="text-sm">📐</span>
+      </button>
       <button onclick="restartGame()" id="btn-restart"
         class="time-btn w-10 h-10 rounded-lg border border-gray-600 text-gray-400 hover:text-white hover:border-red-500 hover:text-red-400 flex items-center justify-center mr-2"
         data-i18n-title="restart_game"
@@ -814,6 +819,11 @@
           Continue Game
         </button>
 
+        <button onclick="showBlueprintManager()"
+          class="w-full bg-teal-600 hover:bg-teal-500 text-white font-bold py-3 px-8 rounded-lg border border-teal-400/50 transition hover:text-white font-mono uppercase">
+          📐 <span data-i18n="blueprints">Blueprints</span>
+        </button>
+
         <button onclick="showFAQ()"
           data-i18n="manual_faq"
           class="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold py-3 px-8 rounded-lg border border-gray-600 transition hover:text-white font-mono uppercase">
@@ -1241,6 +1251,7 @@
   <script src="src/campaign/diagram.js"></script>
   <script src="src/campaign/levels.js"></script>
   <script src="src/campaign/campaign.js"></script>
+  <script src="src/blueprint.js"></script>
   <script src="game.js"></script>
 
   <!-- Campaign: Level Select Modal -->
@@ -1336,6 +1347,72 @@
       </div>
     </div>
   </div>
+  <!-- Blueprint Manager Modal -->
+  <div id="blueprint-modal"
+    class="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm hidden overflow-y-auto">
+    <div class="min-h-screen flex items-start justify-center p-6">
+      <div class="glass-panel rounded-2xl p-6 max-w-2xl w-full border border-teal-500/30">
+        <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
+          <h2 class="text-2xl font-bold text-teal-400">📐 <span data-i18n="blueprint_manager">Blueprint Manager</span></h2>
+          <button onclick="closeBlueprintManager()" class="text-gray-400 hover:text-white text-2xl">×</button>
+        </div>
+
+        <!-- Message area -->
+        <div id="blueprint-message" class="hidden text-xs px-3 py-2 rounded border mb-3"></div>
+
+        <!-- Save current architecture -->
+        <div class="mb-4 border border-gray-700 rounded-lg p-3">
+          <div class="text-xs text-gray-400 mb-2 uppercase font-bold" data-i18n="blueprint_save_current">Save Current Architecture</div>
+          <div class="flex gap-2">
+            <input type="text" id="blueprint-name-input" placeholder="Blueprint name..."
+              class="flex-1 px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white text-sm font-mono placeholder-gray-500" />
+            <button onclick="saveCurrentAsBlueprint()"
+              class="bg-teal-600 hover:bg-teal-500 text-white font-bold px-4 py-2 rounded text-sm font-mono uppercase">
+              <span data-i18n="blueprint_save">Save</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Import/Export -->
+        <div class="mb-4 flex gap-2">
+          <button onclick="toggleBlueprintImport()"
+            class="flex-1 bg-blue-800/50 hover:bg-blue-700 text-blue-300 text-xs py-2 rounded border border-blue-700/50 font-mono uppercase">
+            <span data-i18n="blueprint_import_btn">Import from Text</span>
+          </button>
+        </div>
+
+        <!-- Import area (hidden by default) -->
+        <div id="blueprint-import-area" class="hidden mb-4 border border-gray-700 rounded-lg p-3">
+          <div class="text-xs text-gray-400 mb-2 uppercase font-bold" data-i18n="blueprint_paste_label">Paste Blueprint JSON</div>
+          <textarea id="blueprint-import-text" rows="5"
+            class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-green-300 text-xs font-mono placeholder-gray-500 resize-none"
+            placeholder='{"name":"My Blueprint","version":1,"services":[...],"connections":[...]}'></textarea>
+          <button onclick="importBlueprintFromText()"
+            class="mt-2 w-full bg-green-700 hover:bg-green-600 text-white font-bold py-2 rounded text-xs font-mono uppercase">
+            <span data-i18n="blueprint_import_confirm">Import</span>
+          </button>
+        </div>
+
+        <!-- Export area (hidden by default) -->
+        <div id="blueprint-export-area" class="hidden mb-4 border border-gray-700 rounded-lg p-3">
+          <div class="text-xs text-gray-400 mb-2 uppercase font-bold" data-i18n="blueprint_export_label">Blueprint Data (copy to share)</div>
+          <textarea id="blueprint-export-text" rows="5" readonly
+            class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-cyan-300 text-xs font-mono resize-none"></textarea>
+          <button onclick="copyBlueprintExport()"
+            class="mt-2 w-full bg-cyan-700 hover:bg-cyan-600 text-white font-bold py-2 rounded text-xs font-mono uppercase">
+            <span data-i18n="blueprint_copy_clipboard">Copy to Clipboard</span>
+          </button>
+        </div>
+
+        <!-- Blueprint list -->
+        <div class="text-xs text-gray-400 mb-2 uppercase font-bold" data-i18n="blueprint_library">Your Blueprints</div>
+        <div id="blueprint-list" class="space-y-3 max-h-80 overflow-y-auto">
+          <!-- populated by renderBlueprintList() -->
+        </div>
+      </div>
+    </div>
+  </div>
+
 </body>
 
 </html>

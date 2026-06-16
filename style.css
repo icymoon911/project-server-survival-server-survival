@@ -325,3 +325,19 @@ body {
     opacity: 1;
   }
 }
+
+/* Blueprint modal scrollbar */
+#blueprint-list::-webkit-scrollbar {
+  width: 6px;
+}
+#blueprint-list::-webkit-scrollbar-track {
+  background: rgba(30, 30, 30, 0.5);
+  border-radius: 3px;
+}
+#blueprint-list::-webkit-scrollbar-thumb {
+  background: rgba(100, 100, 100, 0.5);
+  border-radius: 3px;
+}
+#blueprint-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.5);
+}
