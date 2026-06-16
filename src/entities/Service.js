@@ -8,121 +8,11 @@ class Service {
     this.processing = [];
     this.connections = [];
     this.incomingCount = 0;
+    this._handler = getHandler(type);
 
-    let geo, mat;
-    const materialProps = { roughness: 0.2 };
-
-    switch (type) {
-      case "waf":
-        geo = new THREE.BoxGeometry(3, 2, 0.5);
-        mat = new THREE.MeshStandardMaterial({
-          color: CONFIG.colors.waf,
-          ...materialProps,
-        });
-        break;
-      case "alb":
-        geo = new THREE.BoxGeometry(3, 1.5, 3);
-        mat = new THREE.MeshStandardMaterial({
-          color: CONFIG.colors.alb,
-          roughness: 0.1,
-        });
-        break;
-      case "compute":
-        geo = new THREE.CylinderGeometry(1.2, 1.2, 3, 16);
-        mat = new THREE.MeshStandardMaterial({
-          color: CONFIG.colors.compute,
-          ...materialProps,
-        });
-        break;
-      case "db":
-        geo = new THREE.CylinderGeometry(2, 2, 2, 6);
-        mat = new THREE.MeshStandardMaterial({
-          color: CONFIG.colors.db,
-          roughness: 0.3,
-        });
-        break;
-      case "s3":
-        geo = new THREE.CylinderGeometry(1.8, 1.5, 1.5, 8);
-        mat = new THREE.MeshStandardMaterial({
-          color: CONFIG.colors.s3,
-          ...materialProps,
-        });
-        break;
-      case "cache":
-        geo = new THREE.BoxGeometry(2.5, 1.5, 2.5);
-        mat = new THREE.MeshStandardMaterial({
-          color: CONFIG.colors.cache,
-          ...materialProps,
-        });
-        break;
-      case "sqs":
-        geo = new THREE.BoxGeometry(4, 0.8, 2);
-        mat = new THREE.MeshStandardMaterial({
-          color: CONFIG.colors.sqs,
-          ...materialProps,
-        });
-        break;
-      case "cdn":
-        geo = new THREE.SphereGeometry(1.5, 16, 16);
-        mat = new THREE.MeshStandardMaterial({
-          color: 0x4ade80, // Greenish for static
-          ...materialProps,
-          wireframe: true,
-        });
-        break;
-      case "apigw":
-        geo = new THREE.OctahedronGeometry(1.5, 0);
-        mat = new THREE.MeshStandardMaterial({
-          color: CONFIG.colors.apigw,
-          ...materialProps,
-        });
-        break;
-      case "nosql":
-        geo = new THREE.CylinderGeometry(2, 2, 1.5, 16);
-        mat = new THREE.MeshStandardMaterial({
-          color: CONFIG.colors.nosql,
-          roughness: 0.3,
-        });
-        break;
-      case "search":
-        geo = new THREE.DodecahedronGeometry(1.5, 0);
-        mat = new THREE.MeshStandardMaterial({
-          color: CONFIG.colors.search,
-          ...materialProps,
-        });
-        break;
-      case "replica":
-        geo = new THREE.CylinderGeometry(1.8, 1.8, 1, 6);
-        mat = new THREE.MeshStandardMaterial({
-          color: CONFIG.colors.replica,
-          roughness: 0.3,
-        });
-        break;
-      case "serverless":
-        geo = new THREE.TetrahedronGeometry(1.8, 0);
-        mat = new THREE.MeshStandardMaterial({
-          color: CONFIG.colors.serverless,
-          ...materialProps,
-        });
-        break;
-    }
-
-    this.mesh = new THREE.Mesh(geo, mat);
-    this.mesh.position.copy(pos);
-
-    if (type === "waf") this.mesh.position.y += 1;
-    else if (type === "alb") this.mesh.position.y += 0.75;
-    else if (type === "compute") this.mesh.position.y += 1.5;
-    else if (type === "s3") this.mesh.position.y += 0.75;
-    else if (type === "cache") this.mesh.position.y += 0.75;
-    else if (type === "sqs") this.mesh.position.y += 0.4;
-    else if (type === "cdn") this.mesh.position.y += 1.5;
-    else if (type === "apigw") this.mesh.position.y += 1.5;
-    else if (type === "nosql") this.mesh.position.y += 1;
-    else if (type === "search") this.mesh.position.y += 1.5;
-    else if (type === "replica") this.mesh.position.y += 1;
-    else if (type === "serverless") this.mesh.position.y += 1.5;
-    else this.mesh.position.y += 1;
+    // Build mesh from visual config (replaces the old 12-case switch)
+    const { mesh, mat, yOffset } = createServiceMesh(type, pos);
+    this.mesh = mesh;
 
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
@@ -137,7 +27,7 @@ class Service {
     });
     this.loadRing = new THREE.Mesh(ringGeo, ringMat);
     this.loadRing.rotation.x = -Math.PI / 2;
-    this.loadRing.position.y = -this.mesh.position.y + 0.1;
+    this.loadRing.position.y = -yOffset + 0.1;
     this.mesh.add(this.loadRing);
 
     this.tier = 1;
@@ -201,37 +91,8 @@ class Service {
 
     STATE.sound.playPlace();
 
-    // Visuals
-    let ringSize, ringColor;
-    if (this.type === "db") {
-      ringSize = 2.2;
-      ringColor = 0xff0000;
-    } else if (this.type === "cache") {
-      ringSize = 1.5;
-      ringColor = 0xdc382d; // Redis red
-    } else if (this.type === "apigw") {
-      ringSize = 1.5;
-      ringColor = 0xe879f9;
-    } else if (this.type === "nosql") {
-      ringSize = 2.0;
-      ringColor = 0x7c3aed;
-    } else if (this.type === "search") {
-      ringSize = 1.5;
-      ringColor = 0x06b6d4;
-    } else if (this.type === "replica") {
-      ringSize = 1.8;
-      ringColor = 0xf472b6;
-    } else {
-      ringSize = 1.3;
-      ringColor = 0xffff00;
-    }
-
-    const ringGeo = new THREE.TorusGeometry(ringSize, 0.1, 8, 32);
-    const ringMat = new THREE.MeshBasicMaterial({ color: ringColor });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.rotation.x = Math.PI / 2;
-    // Tier rings
-    ring.position.y = -this.mesh.position.y + (this.tier === 2 ? 0.5 : 1.0);
+    // Tier ring visual — uses shared config (no more duplicated if/else)
+    const ring = createTierRing(this.type, this.tier, this.mesh.position.y);
     this.mesh.add(ring);
     this.tierRings.push(ring);
   }
@@ -271,7 +132,9 @@ class Service {
   }
 
   update(dt) {
-    // Service degradation mechanic
+    const handler = this._handler;
+
+    // --- Common: Service degradation mechanic ---
     if (CONFIG.survival.degradation?.enabled && STATE.gameMode === "survival") {
       const degradeConfig = CONFIG.survival.degradation;
       const load = this.totalLoad;
@@ -295,15 +158,10 @@ class Service {
       this.updateHealthVisual();
     }
 
-    // API Gateway rate counter reset
-    if (this.type === "apigw") {
-      this.rateTimer = (this.rateTimer || 0) + dt;
-      if (this.rateTimer >= 1.0) {
-        this.rateCounter = 0;
-        this.rateTimer -= 1.0;
-      }
-    }
+    // --- Handler pre-processing (e.g. apigw rate counter, compute pull) ---
+    if (handler.preProcess) handler.preProcess(this, dt);
 
+    // --- Common: Upkeep ---
     if (STATE.upkeepEnabled) {
       const multiplier =
         typeof getUpkeepMultiplier === "function" ? getUpkeepMultiplier() : 1.0;
@@ -316,55 +174,15 @@ class Service {
       }
     }
 
-    // COMPUTE / SERVERLESS PULL LOGIC
-    if (this.type === "compute" || this.type === "serverless") {
-      // Check if we have space in our queue+processing
-      // We want the UPSTREAM queue (SQS) to do the buffering, not the compute node local queue.
-      // So we only pull if we are running low on work locally.
-      // If we have ANY work in our local queue, we should process that first before pulling more.
-      // We allow a tiny buffer (e.g. 1) so there's no gap in processing.
-      const pullThreshold = 1;
-
-      // Current load logic: count requests in queue and incoming (in flight)
-      const pendingWork = this.queue.length + this.incomingCount;
-
-      if (pendingWork <= pullThreshold) {
-        // Find upstream SQS services
-        const upstreamSQS = STATE.services.filter(s =>
-          s.type === 'sqs' &&
-          s.connections.includes(this.id) &&
-          !s.isDisabled
-        );
-
-        if (upstreamSQS.length > 0) {
-          // Round robin pull
-          if (typeof this.upstreamRR === 'undefined') this.upstreamRR = 0;
-
-          // Try up to the number of upstream sources (don't loop forever)
-          for (let i = 0; i < upstreamSQS.length; i++) {
-            const idx = (this.upstreamRR + i) % upstreamSQS.length;
-            const sqs = upstreamSQS[idx];
-
-            const req = sqs.popRequest();
-            if (req) {
-              req.flyTo(this);
-              this.upstreamRR = (idx + 1) % upstreamSQS.length;
-              break;
-            }
-          }
-        }
-      }
-    }
-
     this.processQueue();
 
+    // --- Processing loop: dispatch each completed job to the handler ---
     for (let i = this.processing.length - 1; i >= 0; i--) {
       let job = this.processing[i];
 
-      const processingTime =
-        this.type === "compute" || this.type === "serverless"
-          ? this.config.processingTime * job.req.processingWeight
-          : this.config.processingTime;
+      const processingTime = handler.getProcessingTime
+        ? handler.getProcessingTime(this, job)
+        : this.config.processingTime;
 
       job.timer += dt * 1000;
 
@@ -379,302 +197,19 @@ class Service {
             : 0;
         const totalFailChance = Math.min(1, failChance + healthPenalty);
         if (Math.random() < totalFailChance) {
-          // Serverless pays per invocation even when the function errors out
-          if (this.type === "serverless") {
-            const cost = this.config.perRequestCost || 0;
-            STATE.money -= cost;
-            if (STATE.finances) {
-              STATE.finances.expenses.upkeep += cost;
-              STATE.finances.expenses.byService.serverless =
-                (STATE.finances.expenses.byService.serverless || 0) + cost;
-            }
-          }
+          if (handler.onJobFail) handler.onJobFail(this, job);
           failRequest(job.req);
           continue;
         }
 
-        if (this.type === "db") {
-          if (job.req.destination === "db") {
-            finishRequest(job.req, this.type);
-          } else {
-            failRequest(job.req);
-          }
-          continue;
-        }
-
-        if (this.type === "nosql") {
-          // NoSQL handles READ and WRITE, but NOT SEARCH
-          if (job.req.type === "SEARCH") {
-            failRequest(job.req);
-          } else if (job.req.destination === "db") {
-            finishRequest(job.req, this.type);
-          } else {
-            failRequest(job.req);
-          }
-          continue;
-        }
-
-        if (this.type === "search") {
-          if (job.req.type === "SEARCH") {
-            finishRequest(job.req, this.type);
-          } else {
-            failRequest(job.req);
-          }
-          continue;
-        }
-
-        if (this.type === "replica") {
-          const hasMaster = this.connections.some(id => {
-            const s = STATE.services.find(svc => svc.id === id);
-            return s && (s.type === "db" || s.type === "nosql");
-          });
-          if (!hasMaster) {
-            failRequest(job.req);
-            continue;
-          }
-          if (job.req.type === "READ" && job.req.destination === "db") {
-            finishRequest(job.req, this.type);
-          } else {
-            failRequest(job.req);
-          }
-          continue;
-        }
-
-        if (this.type === "s3") {
-          if (job.req.destination === "s3" || job.req.destination === "cdn") {
-            finishRequest(job.req, this.type);
-          } else {
-            failRequest(job.req);
-          }
-          continue;
-        }
-
-        if (this.type === "cache") {
-          if (job.req.isCacheable) {
-            const hitRate = job.req.cacheHitRate;
-
-            if (Math.random() < hitRate) {
-              job.req.cached = true;
-              STATE.sound.playSuccess();
-              this.flashCacheHit();
-              finishRequest(job.req, this.type);
-              continue;
-            }
-          }
-
-          const destType = job.req.destination;
-
-          // Cache miss routing: prefer specialized services
-          if (destType === "db") {
-            if (job.req.type === "SEARCH") {
-              const searchTarget = this.findConnectedService("search");
-              if (searchTarget) { job.req.flyTo(searchTarget); continue; }
-            }
-            if (job.req.type === "READ") {
-              const replicaTarget = this.findConnectedService("replica");
-              if (replicaTarget) { job.req.flyTo(replicaTarget); continue; }
-            }
-            if (job.req.type !== "SEARCH") {
-              const nosqlTarget = this.findConnectedService("nosql");
-              if (nosqlTarget) { job.req.flyTo(nosqlTarget); continue; }
-            }
-            const sqlTarget = this.findConnectedService("db");
-            if (sqlTarget) { job.req.flyTo(sqlTarget); continue; }
-            failRequest(job.req);
-          } else {
-            const target = this.findConnectedService(destType);
-            if (target) {
-              job.req.flyTo(target);
-            } else {
-              failRequest(job.req);
-            }
-          }
-          continue;
-        }
-
-        // CDN processing logic - High cache hit rate for static content
-        if (this.type === "cdn") {
-          if (job.req.type === "STATIC") {
-            const hitRate = this.config.cacheHitRate || 0.95;
-
-            // CDN Cache Hit
-            if (Math.random() < hitRate) {
-              job.req.cached = true;
-              STATE.sound.playSuccess();
-              this.flashCacheHit();
-              finishRequest(job.req, this.type);
-              continue;
-            }
-          }
-
-          // Cache Miss - Forward to Origin (S3 or whatever is connected)
-          // We look for any connected service that isn't Internet
-          const connectedServices = this.connections
-            .map((id) => STATE.services.find((s) => s.id === id))
-            .filter((s) => s && s.type !== "internet");
-
-          if (connectedServices.length > 0) {
-            // Simple round robin or just pick first
-            const target = connectedServices[0];
-            job.req.flyTo(target);
-          } else {
-            // Configuring Miss but no origin = Fail
-            failRequest(job.req);
-          }
-          continue;
-        }
-
-        // SQS processing logic
-        if (this.type === "sqs") {
-          // SQS just forwards requests with backpressure check
-          // MODIFIED: Filter out compute nodes, they will PULL from us instead
-          const downstreamTypes = ["alb"];
-          // We intentionally excluded "compute" from the automatic push list.
-          // Compute nodes must actively pull from SQS.
-
-          const candidates = this.connections
-            .map((id) => STATE.services.find((s) => s.id === id))
-            .filter((s) => s && downstreamTypes.includes(s.type) && !s.isDisabled);
-
-          // If no candidates (e.g. only connected to compute), we just wait.
-          // The request remains in 'processing' (it was spliced out, so we need to put it back if we don't send it)
-          if (candidates.length === 0) {
-            // Put it back so it's not lost, and can be popped by compute
-            this.processing.splice(i, 0, job);
-            continue;
-          }
-
-
-
-          // Round-robin with backpressure check
-          let sent = false;
-          for (let attempt = 0; attempt < candidates.length; attempt++) {
-            const target = candidates[this.rrIndex % candidates.length];
-            this.rrIndex++;
-
-            const targetMaxQueue = target.config.maxQueueSize || 20;
-            if (target.queue.length + target.incomingCount < targetMaxQueue) {
-              job.req.flyTo(target);
-              sent = true;
-              break;
-            }
-          }
-
-          if (!sent) {
-            // Downstream busy - keep in processing to retry next frame
-            // Since it was removed at the start of the block, we put it back
-            this.processing.splice(i, 0, job);
-            break;
-          }
-          continue;
-        }
-
-        // API Gateway processing logic - rate limiting
-        if (this.type === "apigw") {
-          this.rateCounter = (this.rateCounter || 0) + 1;
-          const rateLimit = this.config.rateLimit || 20;
-
-          if (this.rateCounter > rateLimit) {
-            // Rate limited - soft fail
-            throttleRequest(job.req);
-            continue;
-          }
-
-          // Forward to downstream (ALB, SQS, Compute)
-          const candidates = this.connections
-            .map((id) => STATE.services.find((s) => s.id === id))
-            .filter((s) => s && !s.isDisabled);
-
-          if (candidates.length > 0) {
-            const target = candidates[this.rrIndex % candidates.length];
-            this.rrIndex++;
-            job.req.flyTo(target);
-          } else {
-            failRequest(job.req);
-          }
-          continue;
-        }
-
-        if (this.type === "compute" || this.type === "serverless") {
-          // Per-request cost for serverless (AWS Lambda style - charged per invocation,
-          // including failed ones since you still pay for execution time)
-          const chargePerRequest = () => {
-            if (this.type !== "serverless") return;
-            const cost = this.config.perRequestCost || 0;
-            STATE.money -= cost;
-            if (STATE.finances) {
-              STATE.finances.expenses.upkeep += cost;
-              STATE.finances.expenses.byService.serverless =
-                (STATE.finances.expenses.byService.serverless || 0) + cost;
-            }
-          };
-
-          const destType = job.req.destination;
-
-          if (destType === "blocked") {
-            chargePerRequest();
-            failRequest(job.req);
-            continue;
-          }
-
-          if (job.req.isCacheable) {
-            const cacheTarget = this.findConnectedService("cache");
-            if (cacheTarget) {
-              chargePerRequest();
-              job.req.flyTo(cacheTarget);
-              continue;
-            }
-          }
-
-          // Routing: prefer specialized services, fallback to general
-          if (destType === "db") {
-            if (job.req.type === "SEARCH") {
-              const searchTarget = this.findConnectedService("search");
-              if (searchTarget) { chargePerRequest(); job.req.flyTo(searchTarget); continue; }
-              const sqlTarget = this.findConnectedService("db");
-              if (sqlTarget) { chargePerRequest(); job.req.flyTo(sqlTarget); continue; }
-            } else if (job.req.type === "READ") {
-              const replicaTarget = this.findConnectedService("replica");
-              if (replicaTarget) { chargePerRequest(); job.req.flyTo(replicaTarget); continue; }
-              const nosqlTarget = this.findConnectedService("nosql");
-              if (nosqlTarget) { chargePerRequest(); job.req.flyTo(nosqlTarget); continue; }
-              const sqlTarget = this.findConnectedService("db");
-              if (sqlTarget) { chargePerRequest(); job.req.flyTo(sqlTarget); continue; }
-            } else {
-              const nosqlTarget = this.findConnectedService("nosql");
-              if (nosqlTarget) { chargePerRequest(); job.req.flyTo(nosqlTarget); continue; }
-              const sqlTarget = this.findConnectedService("db");
-              if (sqlTarget) { chargePerRequest(); job.req.flyTo(sqlTarget); continue; }
-            }
-            chargePerRequest();
-            failRequest(job.req);
-            continue;
-          }
-
-          const directTarget = this.findConnectedService(destType);
-          if (directTarget) {
-            chargePerRequest();
-            job.req.flyTo(directTarget);
-          } else {
-            chargePerRequest();
-            failRequest(job.req);
-          }
-        } else {
-          const candidates = this.connections
-            .map((id) => STATE.services.find((s) => s.id === id))
-            .filter((s) => s !== undefined && !s.isDisabled); // Skip offline nodes
-
-          if (candidates.length > 0) {
-            const target = candidates[this.rrIndex % candidates.length];
-            this.rrIndex++;
-            job.req.flyTo(target);
-          } else {
-            failRequest(job.req);
-          }
-        }
+        // Expose loop index so SQS handler can re-insert at the correct position
+        this._currentJobIndex = i;
+        const result = handler.processJob(this, job);
+        if (result && result.break) break;
       }
     }
 
+    // --- Common: Load ring visual ---
     if (this.totalLoad > 0.8) {
       this.loadRing.material.color.setHex(0xff0000);
       if (STATE.selectedNodeId === this.id) {
@@ -705,20 +240,8 @@ class Service {
       }
     }
 
-    if (this.type === "sqs" && this.queueFill) {
-      const maxQ = this.config.maxQueueSize || 200;
-      const fillPercent = this.queue.length / maxQ;
-      this.queueFill.scale.x = fillPercent;
-      this.queueFill.position.x = (fillPercent - 1) * 1.9;
-
-      if (fillPercent > 0.8) {
-        this.queueFill.material.color.setHex(0xff0000);
-      } else if (fillPercent > 0.5) {
-        this.queueFill.material.color.setHex(0xffaa00);
-      } else {
-        this.queueFill.material.color.setHex(0x00ff00);
-      }
-    }
+    // --- Handler post-update (e.g. SQS queue fill indicator) ---
+    if (handler.postUpdate) handler.postUpdate(this);
   }
 
   flashCacheHit() {
@@ -941,35 +464,9 @@ class Service {
           }
         }
 
+        // Rebuild tier rings using shared config (no more duplicated if/else)
         for (let t = 2; t <= service.tier; t++) {
-          let ringSize, ringColor;
-          if (service.type === "db") {
-            ringSize = 2.2;
-            ringColor = 0xff0000;
-          } else if (service.type === "cache") {
-            ringSize = 1.5;
-            ringColor = 0xdc382d;
-          } else if (service.type === "apigw") {
-            ringSize = 1.5;
-            ringColor = 0xe879f9;
-          } else if (service.type === "nosql") {
-            ringSize = 2.0;
-            ringColor = 0x7c3aed;
-          } else if (service.type === "search") {
-            ringSize = 1.5;
-            ringColor = 0x06b6d4;
-          } else if (service.type === "replica") {
-            ringSize = 1.8;
-            ringColor = 0xf472b6;
-          } else {
-            ringSize = 1.3;
-            ringColor = 0xffff00;
-          }
-          const ringGeo = new THREE.TorusGeometry(ringSize, 0.1, 8, 32);
-          const ringMat = new THREE.MeshBasicMaterial({ color: ringColor });
-          const ring = new THREE.Mesh(ringGeo, ringMat);
-          ring.rotation.x = Math.PI / 2;
-          ring.position.y = -service.mesh.position.y + (t === 2 ? 0.5 : 1.0);
+          const ring = createTierRing(service.type, t, service.mesh.position.y);
           service.mesh.add(ring);
           service.tierRings.push(ring);
         }
