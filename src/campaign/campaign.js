@@ -94,17 +94,16 @@ class CampaignController {
         if (!this.active || STATE.campaign.ended) return;
 
         // 1) Forced burst pattern (level config: burstPattern)
+        // Spawn requests synchronously within the game tick so the burst respects
+        // pause (dt=0 → timer never advances → no burst fires) and fast-forward
+        // (burst interval is measured in game-time, not wall-clock time).
         const bp = STATE.campaign.level?.burstPattern;
         if (bp?.enabled) {
             STATE.campaign.burstTimer += dt;
-            if (STATE.campaign.burstTimer >= bp.intervalSec) {
-                STATE.campaign.burstTimer = 0;
+            while (STATE.campaign.burstTimer >= bp.intervalSec) {
+                STATE.campaign.burstTimer -= bp.intervalSec;
                 for (let i = 0; i < bp.burstSize; i++) {
-                    setTimeout(() => {
-                        // Bail if the level ended or campaign exited while this burst was in flight.
-                        if (!this.active || STATE.campaign.ended) return;
-                        if (typeof spawnRequest === "function") spawnRequest();
-                    }, i * 20);
+                    if (typeof spawnRequest === "function") spawnRequest();
                 }
             }
         }
@@ -116,6 +115,7 @@ class CampaignController {
             const target = (STATE.services || []).find((s) => s.type === "waf");
             if (target) {
                 target.isDisabled = true;
+                target.outageSource = "campaign";
                 target.mesh.material.opacity = 0.3;
                 target.mesh.material.transparent = true;
                 if (typeof addInterventionWarning === "function") {
