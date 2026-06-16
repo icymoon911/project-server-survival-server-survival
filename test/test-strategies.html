@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Service Refactoring - Regression Tests</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #eee; }
+    .test { padding: 10px; margin: 5px 0; border-left: 4px solid #666; }
+    .pass { border-color: #4ade80; background: rgba(74, 222, 128, 0.1); }
+    .fail { border-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
+    h1 { color: #60a5fa; }
+    h2 { color: #fbbf24; margin-top: 30px; }
+    #summary { padding: 20px; margin: 20px 0; border: 2px solid #666; border-radius: 8px; }
+    .summary-pass { border-color: #4ade80; background: rgba(74, 222, 128, 0.2); }
+    .summary-fail { border-color: #ef4444; background: rgba(239, 68, 68, 0.2); }
+  </style>
+</head>
+<body>
+  <h1>🧪 Service Refactoring - Regression Tests</h1>
+  <div id="summary"></div>
+  <div id="tests"></div>
+
+  <script src="../src/config.js"></script>
+  <script src="../src/state.js"></script>
+  <script src="../src/entities/ServiceVisuals.js"></script>
+  <script src="../src/entities/ServiceStrategies.js"></script>
+
+  <script>
+    // Mock dependencies
+    const serviceGroup = { add: () => {}, remove: () => {} };
+    const STATE = {
+      money: 1000,
+      services: [],
+      finances: { expenses: { upkeep: 0, byService: {} } },
+      sound: { playSuccess: () => {}, playPlace: () => {} },
+      upkeepEnabled: false,
+      gameMode: 'survival'
+    };
+
+    let testResults = [];
+    let currentTest = '';
+
+    function assert(condition, message) {
+      if (!condition) {
+        throw new Error(message || 'Assertion failed');
+      }
+    }
+
+    function test(name, fn) {
+      currentTest = name;
+      try {
+        fn();
+        testResults.push({ name, passed: true });
+        addTestResult(name, true);
+      } catch (e) {
+        testResults.push({ name, passed: false, error: e.message });
+        addTestResult(name, false, e.message);
+      }
+    }
+
+    function addTestResult(name, passed, error) {
+      const div = document.createElement('div');
+      div.className = 'test ' + (passed ? 'pass' : 'fail');
+      div.innerHTML = `
+        <strong>${passed ? '✅' : '❌'} ${name}</strong>
+        ${error ? `<div style="color: #ef4444; margin-top: 5px;">${error}</div>` : ''}
+      `;
+      document.getElementById('tests').appendChild(div);
+    }
+
+    function updateSummary() {
+      const passed = testResults.filter(t => t.passed).length;
+      const total = testResults.length;
+      const allPassed = passed === total;
+
+      const summary = document.getElementById('summary');
+      summary.className = allPassed ? 'summary-pass' : 'summary-fail';
+      summary.innerHTML = `
+        <h2>${allPassed ? '✅ All Tests Passed' : '❌ Some Tests Failed'}</h2>
+        <div style="font-size: 24px; margin: 10px 0;">${passed} / ${total}</div>
+        <div>Pass Rate: ${((passed / total) * 100).toFixed(1)}%</div>
+      `;
+    }
+
+    // Mock request object
+    function createMockRequest(type, destination, isCacheable = false, cacheHitRate = 0) {
+      return {
+        type,
+        destination,
+        isCacheable,
+        cacheHitRate,
+        cached: false,
+        processingWeight: 1.0,
+        flyTo: function(target) { this.flewTo = target; },
+        destroy: function() { this.destroyed = true; }
+      };
+    }
+
+    // Mock service object
+    function createMockService(type, connections = []) {
+      return {
+        type,
+        config: CONFIG.services[type],
+        connections,
+        queue: [],
+        processing: [],
+        incomingCount: 0,
+        rrIndex: 0,
+        tier: 1,
+        health: 100,
+        findConnectedService: function(serviceType) {
+          return STATE.services.find(s =>
+            this.connections.includes(s.id) && s.type === serviceType
+          );
+        },
+        flashCacheHit: function() { this.cacheFlashed = true; }
+      };
+    }
+
+    // Helper to track function calls
+    let functionCalls = {};
+    function resetCallTracker() {
+      functionCalls = { finishRequest: 0, failRequest: 0, throttleRequest: 0 };
+    }
+
+    // Mock global functions
+    function finishRequest(req, viaType) {
+      functionCalls.finishRequest++;
+      req.finished = true;
+      req.finishedVia = viaType;
+    }
+
+    function failRequest(req) {
+      functionCalls.failRequest++;
+      req.failed = true;
+    }
+
+    function throttleRequest(req) {
+      functionCalls.throttleRequest++;
+      req.throttled = true;
+    }
+
+    // ==================== TESTS ====================
+
+    console.log('Starting tests...');
+
+    // Test 1: SERVICE_STRATEGIES exists and has all expected types
+    test('SERVICE_STRATEGIES registry exists with all types', () => {
+      assert(SERVICE_STRATEGIES, 'SERVICE_STRATEGIES should exist');
+      const expectedTypes = ['db', 'nosql', 'search', 'replica', 's3', 'cache', 'cdn', 'sqs', 'apigw', 'compute', 'serverless'];
+      expectedTypes.forEach(type => {
+        assert(SERVICE_STRATEGIES[type], `Strategy for ${type} should exist`);
+        assert(typeof SERVICE_STRATEGIES[type].processJob === 'function', `${type} should have processJob method`);
+      });
+    });
+
+    // Test 2: SERVICE_VISUALS exists with geometry/material/yOffset
+    test('SERVICE_VISUALS registry has geometry, material, yOffset', () => {
+      assert(SERVICE_VISUALS, 'SERVICE_VISUALS should exist');
+      Object.keys(CONFIG.services).forEach(type => {
+        assert(SERVICE_VISUALS[type], `Visual config for ${type} should exist`);
+        assert(typeof SERVICE_VISUALS[type].geometry === 'function', `${type} should have geometry factory`);
+        assert(typeof SERVICE_VISUALS[type].material === 'function', `${type} should have material factory`);
+        assert(typeof SERVICE_VISUALS[type].yOffset === 'number', `${type} should have yOffset number`);
+      });
+    });
+
+    // Test 3: TIER_RING_CONFIG exists with ringColor and ringSize
+    test('TIER_RING_CONFIG has ringColor and ringSize for upgradeable types', () => {
+      assert(TIER_RING_CONFIG, 'TIER_RING_CONFIG should exist');
+      const upgradeableTypes = ['db', 'cache', 'apigw', 'nosql', 'search', 'replica', 'compute'];
+      upgradeableTypes.forEach(type => {
+        assert(TIER_RING_CONFIG[type], `Tier ring config for ${type} should exist`);
+        assert(typeof TIER_RING_CONFIG[type].ringColor === 'number', `${type} should have ringColor`);
+        assert(typeof TIER_RING_CONFIG[type].ringSize === 'number', `${type} should have ringSize`);
+      });
+    });
+
+    // Test 4: DB strategy - finishes requests with destination=db
+    test('DB strategy: finishes requests with destination=db', () => {
+      resetCallTracker();
+      const service = createMockService('db');
+      const job = { req: createMockRequest('READ', 'db') };
+
+      SERVICE_STRATEGIES.db.processJob(service, job);
+
+      assert(functionCalls.finishRequest === 1, 'Should call finishRequest once');
+      assert(job.req.finished, 'Request should be finished');
+      assert(job.req.finishedVia === 'db', 'Should finish via db');
+    });
+
+    // Test 5: DB strategy - fails requests without destination=db
+    test('DB strategy: fails requests without destination=db', () => {
+      resetCallTracker();
+      const service = createMockService('db');
+      const job = { req: createMockRequest('READ', 's3') };
+
+      SERVICE_STRATEGIES.db.processJob(service, job);
+
+      assert(functionCalls.failRequest === 1, 'Should call failRequest once');
+      assert(job.req.failed, 'Request should fail');
+    });
+
+    // Test 6: NoSQL strategy - fails SEARCH requests
+    test('NoSQL strategy: fails SEARCH requests', () => {
+      resetCallTracker();
+      const service = createMockService('nosql');
+      const job = { req: createMockRequest('SEARCH', 'db') };
+
+      SERVICE_STRATEGIES.nosql.processJob(service, job);
+
+      assert(functionCalls.failRequest === 1, 'Should fail SEARCH requests');
+    });
+
+    // Test 7: NoSQL strategy - finishes READ/WRITE with destination=db
+    test('NoSQL strategy: finishes READ with destination=db', () => {
+      resetCallTracker();
+      const service = createMockService('nosql');
+      const job = { req: createMockRequest('READ', 'db') };
+
+      SERVICE_STRATEGIES.nosql.processJob(service, job);
+
+      assert(functionCalls.finishRequest === 1, 'Should finish READ requests');
+    });
+
+    // Test 8: Search strategy - finishes SEARCH requests
+    test('Search strategy: finishes SEARCH requests', () => {
+      resetCallTracker();
+      const service = createMockService('search');
+      const job = { req: createMockRequest('SEARCH', 'db') };
+
+      SERVICE_STRATEGIES.search.processJob(service, job);
+
+      assert(functionCalls.finishRequest === 1, 'Should finish SEARCH requests');
+    });
+
+    // Test 9: Search strategy - fails non-SEARCH requests
+    test('Search strategy: fails non-SEARCH requests', () => {
+      resetCallTracker();
+      const service = createMockService('search');
+      const job = { req: createMockRequest('READ', 'db') };
+
+      SERVICE_STRATEGIES.search.processJob(service, job);
+
+      assert(functionCalls.failRequest === 1, 'Should fail non-SEARCH requests');
+    });
+
+    // Test 10: S3 strategy - finishes s3 and cdn destinations
+    test('S3 strategy: finishes s3 and cdn destinations', () => {
+      resetCallTracker();
+      const service = createMockService('s3');
+
+      const job1 = { req: createMockRequest('UPLOAD', 's3') };
+      SERVICE_STRATEGIES.s3.processJob(service, job1);
+      assert(functionCalls.finishRequest === 1, 'Should finish s3 destination');
+
+      const job2 = { req: createMockRequest('STATIC', 'cdn') };
+      SERVICE_STRATEGIES.s3.processJob(service, job2);
+      assert(functionCalls.finishRequest === 2, 'Should finish cdn destination');
+    });
+
+    // Test 11: Compute strategy - routes to cache for cacheable requests
+    test('Compute strategy: routes to cache for cacheable requests', () => {
+      resetCallTracker();
+      const service = createMockService('compute', ['cache1']);
+      const cacheService = { id: 'cache1', type: 'cache' };
+      STATE.services = [cacheService];
+
+      const job = { req: createMockRequest('READ', 'db', true, 0.4) };
+      SERVICE_STRATEGIES.compute.processJob(service, job);
+
+      assert(job.req.flewTo === cacheService, 'Should route to cache');
+      STATE.services = [];
+    });
+
+    // Test 12: Compute strategy - routes SEARCH to search service
+    test('Compute strategy: routes SEARCH to search service', () => {
+      resetCallTracker();
+      const service = createMockService('compute', ['search1']);
+      const searchService = { id: 'search1', type: 'search' };
+      STATE.services = [searchService];
+
+      const job = { req: createMockRequest('SEARCH', 'db', false) };
+      SERVICE_STRATEGIES.compute.processJob(service, job);
+
+      assert(job.req.flewTo === searchService, 'Should route SEARCH to search service');
+      STATE.services = [];
+    });
+
+    // Test 13: Compute strategy - routes READ to replica
+    test('Compute strategy: routes READ to replica', () => {
+      resetCallTracker();
+      const service = createMockService('compute', ['replica1']);
+      const replicaService = { id: 'replica1', type: 'replica' };
+      STATE.services = [replicaService];
+
+      const job = { req: createMockRequest('READ', 'db', false) };
+      SERVICE_STRATEGIES.compute.processJob(service, job);
+
+      assert(job.req.flewTo === replicaService, 'Should route READ to replica');
+      STATE.services = [];
+    });
+
+    // Test 14: Serverless strategy - charges per request
+    test('Serverless strategy: charges per request', () => {
+      resetCallTracker();
+      STATE.money = 1000;
+      const service = createMockService('serverless', ['db1']);
+      const dbService = { id: 'db1', type: 'db' };
+      STATE.services = [dbService];
+
+      const job = { req: createMockRequest('READ', 'db', false) };
+      SERVICE_STRATEGIES.serverless.processJob(service, job);
+
+      const perRequestCost = CONFIG.services.serverless.perRequestCost;
+      assert(STATE.money === 1000 - perRequestCost, `Should charge $${perRequestCost} per request`);
+      assert(job.req.flewTo === dbService, 'Should still route correctly');
+      STATE.services = [];
+    });
+
+    // Test 15: Serverless strategy - charges even for blocked requests
+    test('Serverless strategy: charges for blocked requests', () => {
+      resetCallTracker();
+      STATE.money = 1000;
+      const service = createMockService('serverless');
+
+      const job = { req: createMockRequest('MALICIOUS', 'blocked', false) };
+      SERVICE_STRATEGIES.serverless.processJob(service, job);
+
+      const perRequestCost = CONFIG.services.serverless.perRequestCost;
+      assert(STATE.money === 1000 - perRequestCost, 'Should charge even for blocked');
+      assert(functionCalls.failRequest === 1, 'Should fail blocked request');
+    });
+
+    // Test 16: APIGW strategy - throttles when rate limit exceeded
+    test('APIGW strategy: throttles when rate limit exceeded', () => {
+      resetCallTracker();
+      const service = createMockService('apigw');
+      service.rateCounter = 20; // At limit
+
+      const job = { req: createMockRequest('READ', 'db') };
+      SERVICE_STRATEGIES.apigw.processJob(service, job);
+
+      assert(functionCalls.throttleRequest === 1, 'Should throttle when over limit');
+      assert(job.req.throttled, 'Request should be throttled');
+    });
+
+    // Test 17: APIGW strategy - forwards when under rate limit
+    test('APIGW strategy: forwards when under rate limit', () => {
+      resetCallTracker();
+      const service = createMockService('apigw', ['alb1']);
+      service.rateCounter = 0;
+      const albService = { id: 'alb1', type: 'alb' };
+      STATE.services = [albService];
+
+      const job = { req: createMockRequest('READ', 'db') };
+      SERVICE_STRATEGIES.apigw.processJob(service, job);
+
+      assert(functionCalls.throttleRequest === 0, 'Should not throttle under limit');
+      assert(job.req.flewTo === albService, 'Should forward to ALB');
+      STATE.services = [];
+    });
+
+    // Test 18: CDN strategy - cache hit for STATIC requests
+    test('CDN strategy: cache hit for STATIC requests', () => {
+      resetCallTracker();
+      const service = createMockService('cdn');
+      service.config.cacheHitRate = 1.0; // 100% hit rate
+
+      const job = { req: createMockRequest('STATIC', 'cdn') };
+      SERVICE_STRATEGIES.cdn.processJob(service, job);
+
+      assert(functionCalls.finishRequest === 1, 'Should finish on cache hit');
+      assert(job.req.cached, 'Request should be marked as cached');
+    });
+
+    // Test 19: CDN strategy - cache miss forwards to origin
+    test('CDN strategy: cache miss forwards to origin', () => {
+      resetCallTracker();
+      const service = createMockService('cdn', ['s3_1']);
+      service.config.cacheHitRate = 0.0; // 0% hit rate
+      const s3Service = { id: 's3_1', type: 's3' };
+      STATE.services = [s3Service];
+
+      const job = { req: createMockRequest('STATIC', 'cdn') };
+      SERVICE_STRATEGIES.cdn.processJob(service, job);
+
+      assert(job.req.flewTo === s3Service, 'Should forward to origin on miss');
+      STATE.services = [];
+    });
+
+    // Test 20: Cache strategy - cache hit finishes request
+    test('Cache strategy: cache hit finishes request', () => {
+      resetCallTracker();
+      const service = createMockService('cache');
+
+      const job = { req: createMockRequest('READ', 'db', true, 1.0) }; // 100% hit
+      SERVICE_STRATEGIES.cache.processJob(service, job);
+
+      assert(functionCalls.finishRequest === 1, 'Should finish on cache hit');
+      assert(job.req.cached, 'Request should be cached');
+      assert(service.cacheFlashed, 'Should flash cache hit');
+    });
+
+    // Test 21: Cache strategy - cache miss routes to specialized services
+    test('Cache strategy: cache miss routes to search for SEARCH', () => {
+      resetCallTracker();
+      const service = createMockService('cache', ['search1']);
+      const searchService = { id: 'search1', type: 'search' };
+      STATE.services = [searchService];
+
+      const job = { req: createMockRequest('SEARCH', 'db', true, 0.0) }; // 0% hit
+      SERVICE_STRATEGIES.cache.processJob(service, job);
+
+      assert(job.req.flewTo === searchService, 'Should route SEARCH to search service');
+      STATE.services = [];
+    });
+
+    // Test 22: Replica strategy - requires master connection
+    test('Replica strategy: fails without master connection', () => {
+      resetCallTracker();
+      const service = createMockService('replica', ['compute1']);
+      const computeService = { id: 'compute1', type: 'compute' };
+      STATE.services = [computeService];
+
+      const job = { req: createMockRequest('READ', 'db') };
+      SERVICE_STRATEGIES.replica.processJob(service, job);
+
+      assert(functionCalls.failRequest === 1, 'Should fail without master');
+      STATE.services = [];
+    });
+
+    // Test 23: Replica strategy - finishes READ with master
+    test('Replica strategy: finishes READ with master DB', () => {
+      resetCallTracker();
+      const service = createMockService('replica', ['db1']);
+      const dbService = { id: 'db1', type: 'db' };
+      STATE.services = [dbService];
+
+      const job = { req: createMockRequest('READ', 'db') };
+      SERVICE_STRATEGIES.replica.processJob(service, job);
+
+      assert(functionCalls.finishRequest === 1, 'Should finish READ with master');
+      STATE.services = [];
+    });
+
+    // Test 24: SQS strategy - forwards to ALB
+    test('SQS strategy: forwards to ALB', () => {
+      resetCallTracker();
+      const service = createMockService('sqs', ['alb1']);
+      service._currentProcessingIndex = 0;
+      const albService = { id: 'alb1', type: 'alb', queue: [], incomingCount: 0, config: { maxQueueSize: 20 } };
+      STATE.services = [albService];
+
+      const job = { req: createMockRequest('READ', 'db') };
+      const result = SERVICE_STRATEGIES.sqs.processJob(service, job);
+
+      assert(job.req.flewTo === albService, 'Should forward to ALB');
+      assert(!result || !result.stop, 'Should not stop processing');
+      STATE.services = [];
+    });
+
+    // Test 25: SQS strategy - stops when downstream busy
+    test('SQS strategy: stops when downstream busy', () => {
+      resetCallTracker();
+      const service = createMockService('sqs', ['alb1']);
+      service._currentProcessingIndex = 0;
+      service.processing = [{}]; // Simulate processing array
+      const albService = { id: 'alb1', type: 'alb', queue: new Array(25), incomingCount: 0, config: { maxQueueSize: 20 } };
+      STATE.services = [albService];
+
+      const job = { req: createMockRequest('READ', 'db') };
+      const result = SERVICE_STRATEGIES.sqs.processJob(service, job);
+
+      assert(result && result.stop, 'Should return stop signal');
+      assert(!job.req.flewTo, 'Should not forward when busy');
+      STATE.services = [];
+    });
+
+    // Test 26: Compute and Serverless share routing logic
+    test('Compute and Serverless use same routing (applyComputeRouting)', () => {
+      // Both should route SEARCH to search service
+      resetCallTracker();
+      const computeService = createMockService('compute', ['search1']);
+      const serverlessService = createMockService('serverless', ['search1']);
+      const searchService = { id: 'search1', type: 'search' };
+      STATE.services = [searchService];
+      STATE.money = 1000;
+
+      const job1 = { req: createMockRequest('SEARCH', 'db', false) };
+      SERVICE_STRATEGIES.compute.processJob(computeService, job1);
+      assert(job1.req.flewTo === searchService, 'Compute should route to search');
+
+      const job2 = { req: createMockRequest('SEARCH', 'db', false) };
+      SERVICE_STRATEGIES.serverless.processJob(serverlessService, job2);
+      assert(job2.req.flewTo === searchService, 'Serverless should route to search');
+
+      STATE.services = [];
+    });
+
+    // Test 27: Visual configs match original values
+    test('Visual configs preserve original geometry types', () => {
+      // Test a few key geometries
+      const dbGeo = SERVICE_VISUALS.db.geometry();
+      assert(dbGeo.type === 'CylinderGeometry', 'DB should use CylinderGeometry');
+
+      const cacheGeo = SERVICE_VISUALS.cache.geometry();
+      assert(cacheGeo.type === 'BoxGeometry', 'Cache should use BoxGeometry');
+
+      const cdnGeo = SERVICE_VISUALS.cdn.geometry();
+      assert(cdnGeo.type === 'SphereGeometry', 'CDN should use SphereGeometry');
+
+      const searchGeo = SERVICE_VISUALS.search.geometry();
+      assert(searchGeo.type === 'DodecahedronGeometry', 'Search should use DodecahedronGeometry');
+    });
+
+    // Test 28: Tier ring colors match original values
+    test('Tier ring colors match original hardcoded values', () => {
+      assert(TIER_RING_CONFIG.db.ringColor === 0xff0000, 'DB ring should be red');
+      assert(TIER_RING_CONFIG.cache.ringColor === 0xdc382d, 'Cache ring should be Redis red');
+      assert(TIER_RING_CONFIG.apigw.ringColor === 0xe879f9, 'APIGW ring should be pink');
+      assert(TIER_RING_CONFIG.nosql.ringColor === 0x7c3aed, 'NoSQL ring should be violet');
+      assert(TIER_RING_CONFIG.search.ringColor === 0x06b6d4, 'Search ring should be cyan');
+      assert(TIER_RING_CONFIG.replica.ringColor === 0xf472b6, 'Replica ring should be pink');
+    });
+
+    // Test 29: Y-offsets match original values
+    test('Y-offsets match original hardcoded values', () => {
+      assert(SERVICE_VISUALS.waf.yOffset === 1, 'WAF yOffset should be 1');
+      assert(SERVICE_VISUALS.alb.yOffset === 0.75, 'ALB yOffset should be 0.75');
+      assert(SERVICE_VISUALS.compute.yOffset === 1.5, 'Compute yOffset should be 1.5');
+      assert(SERVICE_VISUALS.sqs.yOffset === 0.4, 'SQS yOffset should be 0.4');
+      assert(SERVICE_VISUALS.cdn.yOffset === 1.5, 'CDN yOffset should be 1.5');
+    });
+
+    // Test 30: Round-robin fallback works
+    test('Round-robin fallback for unknown types', () => {
+      resetCallTracker();
+      const service = {
+        connections: ['svc1', 'svc2'],
+        rrIndex: 0
+      };
+      const svc1 = { id: 'svc1', type: 'unknown', isDisabled: false };
+      const svc2 = { id: 'svc2', type: 'unknown', isDisabled: false };
+      STATE.services = [svc1, svc2];
+
+      const job1 = { req: createMockRequest('READ', 'db') };
+      applyRoundRobin(service, job1);
+      assert(job1.req.flewTo === svc1, 'First call should go to svc1');
+
+      const job2 = { req: createMockRequest('READ', 'db') };
+      applyRoundRobin(service, job2);
+      assert(job2.req.flewTo === svc2, 'Second call should go to svc2');
+
+      STATE.services = [];
+    });
+
+    updateSummary();
+    console.log(`Tests complete: ${testResults.filter(t => t.passed).length}/${testResults.length} passed`);
+  </script>
+</body>
+</html>
