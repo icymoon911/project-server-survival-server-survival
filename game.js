@@ -1604,6 +1604,9 @@ function showMainMenu() {
     if (loadBtn) {
         loadBtn.style.display = hasSave ? "block" : "none";
     }
+
+    // Update blueprint count label
+    _updateBlueprintCountLabel();
 }
 
 let faqSource = "menu"; // 'menu' or 'game'
@@ -1648,6 +1651,9 @@ window.startGame = () => {
     document.getElementById("main-menu-modal").classList.add("hidden");
     resetGame();
 
+    // Apply selected blueprint if any
+    applyPendingBlueprint("survival");
+
     if (window.tutorial) {
         setTimeout(() => {
             window.tutorial.start();
@@ -1658,6 +1664,9 @@ window.startGame = () => {
 window.startSandbox = () => {
     document.getElementById("main-menu-modal").classList.add("hidden");
     resetGame("sandbox");
+
+    // Apply selected blueprint if any
+    applyPendingBlueprint("sandbox");
 };
 
 // ===================== CAMPAIGN MODE =====================
@@ -1849,6 +1858,11 @@ window.startCampaignLevel = (levelId) => {
     STATE.trafficDistribution = { ...level.trafficDistribution };
     STATE.currentRPS = level.rps;
     STATE.money = level.budget;
+
+    // Apply pending blueprint if selected (after level budget is set)
+    if (typeof applyPendingBlueprint === "function") {
+        applyPendingBlueprint("campaign", level);
+    }
 
     // Toolbar gating
     applyCampaignToolbarGating(level.allowedServices, level.forbiddenServices);
@@ -3476,6 +3490,9 @@ function openMainMenu() {
         loadBtn.style.display = hasSave ? "block" : "none";
     }
 
+    // Update blueprint count label
+    _updateBlueprintCountLabel();
+
     // Show main menu
     document.getElementById("main-menu-modal").classList.remove("hidden");
     STATE.sound.playMenuBGM();
@@ -3848,3 +3865,26 @@ function restoreConnections(savedConnections, internetConnections) {
         createConnection(connData.from, connData.to);
     });
 }
+
+// ─── Blueprint UI helpers ───────────────────────────────────────────
+
+function _updateBlueprintCountLabel() {
+    const label = document.getElementById("blueprint-count-label");
+    if (label && typeof getAllBlueprints === "function") {
+        const count = getAllBlueprints().length;
+        label.textContent = count + " saved";
+    }
+}
+
+// Override openBlueprintManager to show/hide "save current" button
+(function() {
+    const _origOpen = window.openBlueprintManager;
+    window.openBlueprintManager = () => {
+        _origOpen();
+        // Show "save current" button only when game is running
+        const saveBtn = document.getElementById("blueprint-save-current-btn");
+        if (saveBtn) {
+            saveBtn.style.display = STATE.gameStarted ? "block" : "none";
+        }
+    };
+})();
